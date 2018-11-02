@@ -12,6 +12,7 @@
 #' - Redshift
 #' - Vertica
 #' - BigQuery
+#' - Cassandra
 #'
 #' If you are using a different database and `dbWriteTable()` fails with a SQL
 #' parsing error the default method is not appropriate, you will need to write
@@ -258,6 +259,22 @@ odbcDataType.Oracle <- function(con, obj, ...) {
     double = "FLOAT64",
     character = "STRING",
     logical = "BOOL",
+    stop("Unsupported type", call. = FALSE)
+  )
+}
+
+#' @export
+`odbcDataType.Cassandra` <- function(con, obj, ...) {
+  switch_type(obj,
+    factor = "TEXT",
+    datetime = "TIMESTAMP",
+    time = "TIME",
+    date = "DATE",
+    binary = "BLOB",
+    integer = "BIGINT",
+    double = "DOUBLE",
+    character = "TEXT",
+    logical = "BOOLEAN",
     stop("Unsupported type", call. = FALSE)
   )
 }
