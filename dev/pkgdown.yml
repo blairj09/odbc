@@ -1,9 +1,11 @@
-pandoc: 2.19.2
-pkgdown: 2.0.6
+pandoc: 3.1.11
+pkgdown: 2.1.1
 pkgdown_sha: ~
-articles: {}
-last_built: 2022-12-08T00:17Z
+articles:
+  benchmarks: benchmarks.html
+  develop: develop.html
+  setup: setup.html
+last_built: 2024-10-09T16:47Z
 urls:
-  reference: https://r-dbi.github.io/odbc/reference
-  article: https://r-dbi.github.io/odbc/articles
-
+  reference: https://odbc.r-dbi.org/reference
+  article: https://odbc.r-dbi.org/articles
