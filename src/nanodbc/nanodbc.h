@@ -321,6 +321,14 @@ struct timestamp
     std::int32_t fract; ///< Fractional seconds.
 };
 
+/// \brief A type for representing timestamp data.
+struct timestampoffset
+{
+    timestamp    stamp;
+    std::int16_t offset_hour;     ///< Whole hour part of time zone offset
+    std::int16_t offset_minute;   ///< Minutes part of time zome offset
+};
+
 /// \brief A type trait for testing if a type is a std::basic_string compatible with the current
 /// nanodbc configuration
 template <typename T>
@@ -696,6 +704,12 @@ public:
 
     /// \brief Returns parameter size for indicated parameter placeholder in a prepared statement.
     unsigned long parameter_size(short param_index) const;
+
+    /// \brief Returns parameter scale for indicated parameter placeholder in a prepared statement.
+    short parameter_scale(short param_index) const;
+
+    /// \brief Returns parameter type for indicated parameter placeholder in a prepared statement.
+    short parameter_type(short param_index) const;
 
     /// \addtogroup binding Binding parameters
     /// \brief These functions are used to bind values to ODBC parameters.

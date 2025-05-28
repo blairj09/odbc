@@ -73,7 +73,8 @@ private:
   bool complete_;
   bool bound_;
   bool immediate_;
-  Iconv output_encoder_;
+  std::shared_ptr<Iconv> output_encoder_;
+  std::shared_ptr<Iconv> column_name_encoder_;
 
   std::map<short, std::vector<std::string>> strings_;
   std::map<short, std::vector<std::vector<uint8_t>>> raws_;
@@ -134,7 +135,7 @@ private:
       size_t start,
       size_t size);
 
-  nanodbc::timestamp as_timestamp(double value);
+  nanodbc::timestamp as_timestamp(double value, unsigned long long factor, unsigned long long pad);
 
   nanodbc::date as_date(double value);
 
@@ -160,6 +161,8 @@ private:
       size_t start,
       size_t size);
   std::vector<std::string> column_names(nanodbc::result const& r);
+
+  double as_double(nanodbc::timestampoffset const& ts);
 
   double as_double(nanodbc::timestamp const& ts);
 

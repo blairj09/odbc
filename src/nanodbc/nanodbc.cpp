@@ -665,6 +665,12 @@ struct sql_ctype<nanodbc::timestamp>
     static const SQLSMALLINT value = SQL_C_TIMESTAMP;
 };
 
+template <>
+struct sql_ctype<nanodbc::timestampoffset>
+{
+    static const SQLSMALLINT value = SQL_C_BINARY;
+};
+
 // Encapsulates resources needed for column binding.
 class bound_column
 {
@@ -1870,35 +1876,44 @@ public:
         return params;
     }
 
-    unsigned long parameter_size(short param_index) const
+    unsigned long parameter_size(short param_index)
     {
-        if (!param_descr_data_.count(param_index))
+        if (param_descr_data_.count(param_index))
         {
-                return static_cast<unsigned long>(param_descr_data_.at(param_index).size_);
+            return static_cast<unsigned long>(param_descr_data_.at(param_index).size_);
         }
-        RETCODE rc;
-        SQLSMALLINT data_type;
-        SQLSMALLINT nullable;
-        SQLULEN parameter_size;
 
-#if defined(NANODBC_DO_ASYNC_IMPL)
-        disable_async();
-#endif
-
-        NANODBC_CALL_RC(
-            SQLDescribeParam,
-            rc,
-            stmt_,
-            param_index + 1,
-            &data_type,
-            &parameter_size,
-            0,
-            &nullable);
-        if (!success(rc))
-            NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
+        describe_parameters(param_index);
+        const SQLULEN& param_size = param_descr_data_.at(param_index).size_;
         NANODBC_ASSERT(
-            parameter_size <= static_cast<SQLULEN>(std::numeric_limits<unsigned long>::max()));
-        return static_cast<unsigned long>(parameter_size);
+            param_size < static_cast<SQLULEN>(std::numeric_limits<unsigned long>::max()));
+        return static_cast<unsigned long>(param_size);
+    }
+
+    short parameter_scale(short param_index)
+    {
+        if (param_descr_data_.count(param_index))
+        {
+            return static_cast<short>(param_descr_data_.at(param_index).scale_);
+        }
+
+        describe_parameters(param_index);
+        const SQLSMALLINT& param_scale = param_descr_data_.at(param_index).scale_;
+        NANODBC_ASSERT(param_scale < static_cast<SQLULEN>(std::numeric_limits<short>::max()));
+        return static_cast<short>(param_scale);
+    }
+
+    short parameter_type(short param_index)
+    {
+        if (param_descr_data_.count(param_index))
+        {
+            return static_cast<short>(param_descr_data_.at(param_index).type_);
+        }
+
+        describe_parameters(param_index);
+        const SQLSMALLINT& param_type = param_descr_data_.at(param_index).type_;
+        NANODBC_ASSERT(param_type < static_cast<SQLULEN>(std::numeric_limits<short>::max()));
+        return static_cast<short>(param_type);
     }
 
     static SQLSMALLINT param_type_from_direction(param_direction direction)
@@ -2104,6 +2119,29 @@ public:
             bind_len_or_null_[param.index_].data());
         if (!success(rc))
             NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
+    }
+
+    void describe_parameters(const short param_index)
+    {
+        RETCODE rc;
+        SQLSMALLINT nullable; // unused
+#if defined(NANODBC_DO_ASYNC_IMPL)
+        disable_async();
+#endif
+        NANODBC_CALL_RC(
+            SQLDescribeParam,
+            rc,
+            stmt_,
+            static_cast<SQLUSMALLINT>(param_index + 1),
+            &param_descr_data_[param_index].type_,
+            &param_descr_data_[param_index].size_,
+            &param_descr_data_[param_index].scale_,
+            &nullable);
+        if (!success(rc))
+        {
+            param_descr_data_.erase(param_index);
+            NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
+        }
     }
 
     void describe_parameters(
@@ -2931,8 +2969,8 @@ private:
                 }
                 break;
             case SQL_SS_TIMESTAMPOFFSET:
-                col.ctype_ = SQL_C_WCHAR;
-                col.clen_ = (col.sqlsize_ + 1) * sizeof(SQLWCHAR);
+                col.ctype_ = SQL_C_BINARY;
+                col.clen_ = sizeof(timestampoffset);
                 break;
             case SQL_LONGVARCHAR:
                 col.ctype_ = SQL_C_CHAR;
@@ -3022,9 +3060,16 @@ inline void result::result_impl::get_ref_impl<date>(short column, date& result) 
     case SQL_C_TIMESTAMP:
     {
         timestamp stamp = *ensure_pdata<timestamp>(column);
-        date d = {stamp.year, stamp.month, stamp.day};
-        result = d;
+        result = date{stamp.year, stamp.month, stamp.day};
         return;
+    }
+    case SQL_C_BINARY:
+    {
+      if (col.sqltype_ == SQL_SS_TIMESTAMPOFFSET) {
+        timestampoffset tstwoffset = *ensure_pdata<timestampoffset>(column);
+        result = date{tstwoffset.stamp.year, tstwoffset.stamp.month, tstwoffset.stamp.day};
+        return;
+      }
     }
     }
     throw type_incompatible_error();
@@ -3042,9 +3087,16 @@ inline void result::result_impl::get_ref_impl<time>(short column, time& result) 
     case SQL_C_TIMESTAMP:
     {
         timestamp stamp = *ensure_pdata<timestamp>(column);
-        time t = {stamp.hour, stamp.min, stamp.sec};
-        result = t;
+        result = time{stamp.hour, stamp.min, stamp.sec};
         return;
+    }
+    case SQL_C_BINARY:
+    {
+      if (col.sqltype_ == SQL_SS_TIMESTAMPOFFSET) {
+        timestampoffset tstwoffset = *ensure_pdata<timestampoffset>(column);
+        result = time{tstwoffset.stamp.hour, tstwoffset.stamp.min, tstwoffset.stamp.sec};
+        return;
+      }
     }
     }
     throw type_incompatible_error();
@@ -3059,13 +3111,52 @@ inline void result::result_impl::get_ref_impl<timestamp>(short column, timestamp
     case SQL_C_DATE:
     {
         date d = *ensure_pdata<date>(column);
-        timestamp stamp = {d.year, d.month, d.day, 0, 0, 0, 0};
-        result = stamp;
+        result = timestamp{d.year, d.month, d.day, 0, 0, 0, 0};
         return;
     }
     case SQL_C_TIMESTAMP:
+    {
         result = *ensure_pdata<timestamp>(column);
         return;
+    }
+    case SQL_C_BINARY:
+    {
+      if (col.sqltype_ == SQL_SS_TIMESTAMPOFFSET) {
+        timestampoffset tstwoffset = *ensure_pdata<timestampoffset>(column);
+        result = tstwoffset.stamp;
+        return;
+      }
+    }
+    }
+    throw type_incompatible_error();
+}
+
+template <>
+inline void result::result_impl::get_ref_impl<timestampoffset>(short column, timestampoffset& result) const
+{
+    bound_column& col = bound_columns_[column];
+    switch (col.ctype_)
+    {
+    case SQL_C_DATE:
+    {
+        date d = *ensure_pdata<date>(column);
+        timestamp stamp = {d.year, d.month, d.day, 0, 0, 0, 0};
+        result = timestampoffset{stamp, 0, 0};
+        return;
+    }
+    case SQL_C_TIMESTAMP:
+    {
+        timestamp stamp = *ensure_pdata<timestamp>(column);
+        result = timestampoffset{stamp, 0, 0};
+        return;
+    }
+    case SQL_C_BINARY:
+    {
+      if (col.sqltype_ == SQL_SS_TIMESTAMPOFFSET) {
+        result = *ensure_pdata<timestampoffset>(column);
+        return;
+      }
+    }
     }
     throw type_incompatible_error();
 }
@@ -3422,7 +3513,7 @@ std::unique_ptr<T, std::function<void(T*)>> result::result_impl::ensure_pdata(sh
             (T*)(col.pdata_ + rowset_position_ * col.clen_), [](T* ptr) {});
     }
 
-    T* buffer = new T;
+    std::unique_ptr<T> buffer(new T);
     const std::size_t buffer_size = sizeof(T);
     void* handle = native_statement_handle();
     NANODBC_CALL_RC(
@@ -3431,7 +3522,7 @@ std::unique_ptr<T, std::function<void(T*)>> result::result_impl::ensure_pdata(sh
         handle,              // StatementHandle
         column + 1,          // Col_or_Param_Num
         sql_ctype<T>::value, // TargetType
-        buffer,              // TargetValuePtr
+        buffer.get(),        // TargetValuePtr
         buffer_size,         // BufferLength
         &ValueLenOrInd);     // StrLen_or_IndPtr
 
@@ -3440,10 +3531,7 @@ std::unique_ptr<T, std::function<void(T*)>> result::result_impl::ensure_pdata(sh
     if (!success(rc))
         NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
 
-    // Return a traditional unique_ptr since we just allocated this buffer, and
-    // we most certainly want this memory returned to the heap when the result
-    // goes out of scope.
-    return std::unique_ptr<T>(buffer);
+    return buffer;
 }
 
 template <class T>
@@ -4170,6 +4258,16 @@ void statement::reset_parameters() NANODBC_NOEXCEPT
 unsigned long statement::parameter_size(short param_index) const
 {
     return impl_->parameter_size(param_index);
+}
+
+short statement::parameter_scale(short param_index) const
+{
+    return impl_->parameter_scale(param_index);
+}
+
+short statement::parameter_type(short param_index) const
+{
+    return impl_->parameter_type(param_index);
 }
 
 // We need to instantiate each form of bind() for each of our supported data types.
@@ -5177,6 +5275,7 @@ template string_type result::get(short) const;
 template date result::get(short) const;
 template time result::get(short) const;
 template timestamp result::get(short) const;
+template timestampoffset result::get(short) const;
 template std::vector<std::uint8_t> result::get(short) const;
 
 template string_type::value_type result::get(const string_type&) const;
@@ -5194,6 +5293,7 @@ template string_type result::get(const string_type&) const;
 template date result::get(const string_type&) const;
 template time result::get(const string_type&) const;
 template timestamp result::get(const string_type&) const;
+template timestampoffset result::get(const string_type&) const;
 template std::vector<std::uint8_t> result::get(const string_type&) const;
 
 // The following are the only supported instantiations of result::get() with fallback.
@@ -5212,6 +5312,7 @@ template string_type result::get(short, const string_type&) const;
 template date result::get(short, const date&) const;
 template time result::get(short, const time&) const;
 template timestamp result::get(short, const timestamp&) const;
+template timestampoffset result::get(short, const timestampoffset&) const;
 template std::vector<std::uint8_t> result::get(short, const std::vector<std::uint8_t>&) const;
 
 template string_type::value_type
@@ -5231,6 +5332,7 @@ template string_type result::get(const string_type&, const string_type&) const;
 template date result::get(const string_type&, const date&) const;
 template time result::get(const string_type&, const time&) const;
 template timestamp result::get(const string_type&, const timestamp&) const;
+template timestampoffset result::get(const string_type&, const timestampoffset&) const;
 template std::vector<std::uint8_t>
 result::get(const string_type&, const std::vector<std::uint8_t>&) const;
 

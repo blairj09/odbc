@@ -1,3 +1,5 @@
+skip_if_no_unixodbc()
+
 test_that("Oracle", {
   DBItest::make_context(
     odbc(),
@@ -40,7 +42,6 @@ test_that("Oracle", {
     "quote_identifier.*",
     "read_table.*",
     "create_table.*",
-    "create_temporary_table",
     "create_table_visible.*",
     "create_roundtrip_quotes",
     "append_roundtrip_quotes_column_names",

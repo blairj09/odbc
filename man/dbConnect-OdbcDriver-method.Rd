@@ -15,6 +15,7 @@ odbc()
   timezone = "UTC",
   timezone_out = "UTC",
   encoding = "",
+  name_encoding = "",
   bigint = c("integer64", "integer", "numeric", "character"),
   timeout = 10,
   driver = NULL,
@@ -58,6 +59,11 @@ datetime values in the local timezone, set to \code{\link[=Sys.timezone]{Sys.tim
 not using UTF-8 you will need to set the encoding to get accurate
 re-encoding. See \code{\link[=iconvlist]{iconvlist()}} for a complete list of available encodings
 on your system. Note strings are always returned \code{UTF-8} encoded.}
+
+\item{name_encoding}{The text encoding for column names used on the
+Database.  May be different than the \code{encoding} argument.  Defaults to
+empty string which is equivalent to returning the column names without
+performing any conversion.}
 
 \item{bigint}{The R type that \code{SQL_BIGINT} types should be mapped to.
 Default is \link[bit64:bit64-package]{bit64::integer64}, which allows the full range of 64 bit
@@ -155,8 +161,9 @@ first argument odbc(), connects to a database using the specified ODBC
 driver to create a connection object.
 \item \emph{Interface with connections}: The resulting connection object can be
 passed to various functions to retrieve information on database
-structure (\code{\link[=dbListTables]{dbListTables()}}), iteratively develop queries (\code{\link[=dbSendQuery]{dbSendQuery()}},
-\code{\link[=dbColumnInfo]{dbColumnInfo()}}), and query data objects (\code{\link[=dbFetch]{dbFetch()}}).
+structure ([DBI::dbListTables()][]), iteratively develop queries
+(\code{\link[DBI:dbSendQuery]{DBI::dbSendQuery()}}, \code{\link[DBI:dbColumnInfo]{DBI::dbColumnInfo()}}), and query data objects
+(\code{\link[DBI:dbFetch]{DBI::dbFetch()}}).
 }
 }
 

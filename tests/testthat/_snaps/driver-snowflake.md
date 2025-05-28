@@ -23,8 +23,18 @@
       snowflake_args(account = "testorg-test_account", driver = "driver")
     Condition
       Error in `DBI::dbConnect()`:
-      ! x Failed to detect ambient Snowflake credentials.
+      ! Failed to detect ambient Snowflake credentials.
       i Supply `uid` and `pwd` to authenticate manually.
+
+# we hint viewer-based credentials on Connect
+
+    Code
+      snowflake_args(account = "testorg-test_account", driver = "driver")
+    Condition
+      Error in `DBI::dbConnect()`:
+      ! Failed to detect ambient Snowflake credentials.
+      i Supply `uid` and `pwd` to authenticate manually.
+      i Or consider enabling Posit Connect's Snowflake integration for viewer-based credentials. See <https://docs.posit.co/connect/user/oauth-integrations/#adding-oauth-integrations-to-deployed-content> for details.
 
 # we error if we can't find the driver
 
@@ -32,7 +42,7 @@
       snowflake_default_driver()
     Condition
       Error in `DBI::dbConnect()`:
-      ! Failed to automatically find Snowflake ODBC driver.
+      ! Failed to automatically find the Snowflake ODBC driver.
       i Set `driver` to known driver name or path.
 
 # Workbench-managed credentials are ignored for other accounts
@@ -41,6 +51,6 @@
       snowflake_args(account = "testorg-test_account", driver = "driver")
     Condition
       Error in `DBI::dbConnect()`:
-      ! x Failed to detect ambient Snowflake credentials.
+      ! Failed to detect ambient Snowflake credentials.
       i Supply `uid` and `pwd` to authenticate manually.
 

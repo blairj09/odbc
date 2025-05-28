@@ -4,7 +4,7 @@
       databricks_default_driver()
     Condition
       Error in `DBI::dbConnect()`:
-      ! Failed to automatically find Databricks/Spark ODBC driver.
+      ! Failed to automatically find the Databricks/Spark ODBC driver.
       i Set `driver` to known driver name or path.
 
 # databricks host validates inputs
@@ -22,7 +22,7 @@
       . <- databricks_args1()
     Condition
       Error in `DBI::dbConnect()`:
-      ! x Failed to detect ambient Databricks credentials.
+      ! Failed to detect ambient Databricks credentials.
       i Supply `uid` and `pwd` to authenticate manually.
 
 # must supply both uid and pwd
@@ -57,4 +57,14 @@
     Condition
       Error in `dbConnect()`:
       ! `httpPath` must be a single string or `NULL`, not the number 1.
+
+# we hint viewer-based credentials on Connect
+
+    Code
+      databricks_args(workspace = "workspace", httpPath = "path", driver = "driver")
+    Condition
+      Error in `DBI::dbConnect()`:
+      ! Failed to detect ambient Databricks credentials.
+      i Supply `uid` and `pwd` to authenticate manually.
+      i Or consider enabling Posit Connect's Databricks integration for viewer-based credentials. See <https://docs.posit.co/connect/user/oauth-integrations/#adding-oauth-integrations-to-deployed-content> for details.
 

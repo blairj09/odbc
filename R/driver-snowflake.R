@@ -98,7 +98,13 @@ setMethod("odbcDataType", "Snowflake",
 #'
 #' In particular, the custom `dbConnect()` method for the Snowflake ODBC driver
 #' detects ambient OAuth credentials on platforms like Snowpark Container
-#' Services or Posit Workbench.
+#' Services or Posit Workbench. It can also detect viewer-based
+#' credentials on Posit Connect if the \pkg{connectcreds} package is
+#' installed.
+#'
+#' In addition, on macOS platforms, the `dbConnect` method will check and warn
+#' if it detects irregularities with how the driver is configured, unless the
+#' `odbc.no_config_override` environment variable is set.
 #'
 #' @inheritParams DBI::dbConnect
 #' @param account A Snowflake [account
@@ -138,16 +144,27 @@ setMethod("odbcDataType", "Snowflake",
 #'   uid = "me",
 #'   pwd = rstudioapi::askForPassword()
 #' )
+#'
+#' # Use credentials from the viewer (when possible) in a Shiny app
+#' # deployed to Posit Connect.
+#' library(connectcreds)
+#' server <- function(input, output, session) {
+#'   conn <- DBI::dbConnect(odbc::snowflake())
+#' }
 #' }
 #' @export
 snowflake <- function() {
-  new("Snowflake")
+  new("SnowflakeOdbcDriver")
 }
 
 #' @rdname snowflake
 #' @export
+setClass("SnowflakeOdbcDriver", contains = "OdbcDriver")
+
+#' @rdname snowflake
+#' @export
 setMethod(
-  "dbConnect", "Snowflake",
+  "dbConnect", "SnowflakeOdbcDriver",
   function(drv,
            account = Sys.getenv("SNOWFLAKE_ACCOUNT"),
            driver = NULL,
@@ -174,6 +191,9 @@ setMethod(
       pwd = pwd,
       ...
     )
+    # Perform some sanity checks on MacOS
+    configure_simba(snowflake_simba_config(args$driver),
+      action = "modify")
     inject(dbConnect(odbc(), !!!args))
   }
 )
@@ -202,13 +222,20 @@ snowflake_args <- function(account = Sys.getenv("SNOWFLAKE_ACCOUNT"),
 
   arg_names <- tolower(names(all))
   if (!"authenticator" %in% arg_names && !all(c("uid", "pwd") %in% arg_names)) {
-    abort(
-      c(
-        "x" = "Failed to detect ambient Snowflake credentials.",
-        "i" = "Supply `uid` and `pwd` to authenticate manually."
-      ),
-      call = quote(DBI::dbConnect())
+    msg <- c(
+      "Failed to detect ambient Snowflake credentials.",
+      "i" = "Supply {.arg uid} and {.arg pwd} to authenticate manually."
     )
+    if (running_on_connect()) {
+      msg <- c(
+        msg,
+        "i" = "Or consider enabling Posit Connect's Snowflake integration \
+              for viewer-based credentials. See {.url \
+              https://docs.posit.co/connect/user/oauth-integrations/#adding-oauth-integrations-to-deployed-content}
+              for details."
+      )
+    }
+    cli::cli_abort(msg, call = quote(DBI::dbConnect()))
   }
 
   all
@@ -219,22 +246,10 @@ snowflake_args <- function(account = Sys.getenv("SNOWFLAKE_ACCOUNT"),
 # default to known shared library paths used by the official installers.
 # On Windows we use the official driver name.
 snowflake_default_driver <- function() {
-  default_paths <- snowflake_default_driver_paths()
-  if (length(default_paths) > 0) {
-    return(default_paths[1])
-  }
-
-  fallbacks <- c("Snowflake", "SnowflakeDSIIDriver")
-  fallbacks <- intersect(fallbacks, odbcListDrivers()$name)
-  if (length(fallbacks) > 0) {
-    return(fallbacks[1])
-  }
-
-  abort(
-    c(
-      "Failed to automatically find Snowflake ODBC driver.",
-      i = "Set `driver` to known driver name or path."
-    ),
+  find_default_driver(
+    snowflake_default_driver_paths(),
+    fallbacks = c("Snowflake", "SnowflakeDSIIDriver"),
+    label = "Snowflake",
     call = quote(DBI::dbConnect())
   )
 }
@@ -246,11 +261,40 @@ snowflake_default_driver_paths <- function() {
       "/usr/lib/snowflake/odbc/lib/libSnowflake.so"
     )
   } else if (Sys.info()["sysname"] == "Darwin") {
-    paths <- "/opt/snowflake/snowflakeodbc/lib/universal/libSnowflake.dylib"
+    paths <- c(
+      "/opt/snowflake/snowflakeodbc/lib/universal/libSnowflake.dylib",
+      "/opt/snowflake-osx-x64/bin/lib/libsnowflakeodbc_sb64-universal.dylib"
+    )
   } else {
     paths <- character()
   }
-  paths[file.exists(paths)]
+  paths
+}
+
+snowflake_simba_config <- function(driver) {
+  snowflake_env <- Sys.getenv("SIMBASNOWFLAKEINI")
+  URL <- "https://docs.snowflake.com/en/developer-guide/odbc/odbc-download"
+  if (!identical(snowflake_env, "")) {
+    return(list(path = snowflake_env, url = URL))
+  }
+  # Posit configuration is likely at:
+  # /opt/snowflake-osx-x64/bin/lib/rstudio.snowflakeodbc.ini
+  # OEM configuration is likely at:
+  # /opt/snowflake/snowflakeodbc/lib/universal/simba.snowflake.ini
+  common_dirs <- c(
+    driver_dir(driver),
+    "/opt/snowflake-osx-x64/bin/lib/",
+    "/opt/snowflake/snowflakeodbc/lib/universal/",
+    getwd(),
+    Sys.getenv("HOME")
+  )
+  return(list(
+    path = list.files(
+      simba_config_dirs(driver),
+      pattern = "snowflake(odbc)?\\.ini$",
+      full.names = TRUE),
+    url = URL
+  ))
 }
 
 snowflake_server <- function(account) {
@@ -271,9 +315,18 @@ snowflake_auth_args <- function(account,
                                 pwd = NULL,
                                 authenticator = NULL,
                                 ...) {
+  check_string(authenticator, allow_null = TRUE)
+  # Detect viewer-based credentials from Posit Connect.
+  url <- paste0("https://", account, ".snowflakecomputing.com")
+  if (is_installed("connectcreds") && connectcreds::has_viewer_token(url)) {
+    token <- connectcreds::connect_viewer_token(url)
+    return(list(authenticator = "oauth", token = token$access_token))
+  }
+
   if (!is.null(uid) &&
-      # allow for uid without pwd for externalbrowser auth (#817)
-      (!is.null(pwd) || identical(authenticator, "externalbrowser"))) {
+      # allow for uid without pwd for alt auth (#817, #889)
+      (!is.null(pwd) ||
+       isTRUE(authenticator %in% c("externalbrowser", "SNOWFLAKE_JWT")))) {
     return(list(uid = uid, pwd = pwd))
   } else if (xor(is.null(uid), is.null(pwd))) {
     abort(

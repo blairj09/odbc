@@ -81,6 +81,42 @@ test_that("parse_database_error() works with messages from the wild", {
           [Microsoft][ODBC Driver 18 for SQL Server]TCP Provider: Error code 0x2726
           [Microsoft][ODBC Driver 18 for SQL Server]A network-related or instance-specific error has occurred while establishing a connection to 127.0.0.1. Server is not found or not accessible. Check if instance name is correct and if SQL Server is configured to allow remote connections. For more information see SQL Server Books Online. "
   expect_snapshot(error = TRUE, rethrow_database_error(msg, call = NULL))
+
+  # message contains brackets that may be interpreted as inline markup (#859)
+  msg <- "nanodbc/nanodbc.cpp:1722: S1000
+          [SAP AG][LIBODBCHDB DLL][HDBODBC] General error;403 internal error: Error opening the cursor for the remote database <***.***> [SAP AG][LIBODBCHDB SO][HDBODBC] Connection not open;-10807 Connection down: [89013] Socket closed by peer {***.**.*.**:***** -> ***.**.***.**:***** TenantName:(none) SiteVolumeID:1:3 SiteType:PRIMARY ConnectionID:****** SessionID:************}
+          <SQL> 'SELECT DISTINCT \"po_id\", ***CENSORED***'"
+  expect_snapshot(error = TRUE, rethrow_database_error(msg, call = NULL))
+
+  skip_on_cran()
+  
+  # Really long error message can cause rethrow_database_error to take a really long time.
+  # This is due to cli::cli_abort, current version is 3.6.5 at the time of this writing. (#914)
+  err_msg_w_really_long_query <- paste(
+    c(
+      "nanodbc/nanodbc.cpp:1544",
+      "[Snowflake] SQL compilation error: error line 1 at position 92",
+      paste0(
+        "<SQL> 'SELECT STATECODE FROM AIR_QUALITY_DATA_UNITED_STATES.PUBLIC.AIR_QUALITY WHERE COUNTYCODE IN (",
+        paste(rep('1', 35000), collapse = ", "),
+        "'"
+      )
+    ),
+    collapse = "\n"
+  ) # Even if this really long error message gets passed to cli::cli_abort it should only take 10 - 20 sec to fail
+  expect_no_condition(parse_database_error(err_msg_w_really_long_query))
+  timing <- system.time({
+    expect_error(rethrow_database_error(err_msg_w_really_long_query, call = NULL))
+  })
+  expect_lt(
+    object = timing["elapsed"],
+    expected = 5,
+    label = "Runtime of `rethrow_database_error(err_msg_w_really_long_query)`",
+    expected.label = "5 seconds"
+  )
+  
+  msg <- "`parse_database_error()` will not {be able to parse this}, but it should still be successfully rethrown as-is."
+  expect_snapshot(error = TRUE, rethrow_database_error(msg, call = NULL))
 })
 
 test_that("set_database_error_names() works (#840)", {
@@ -108,6 +144,7 @@ test_that("set_odbcsysini() works (#791)", {
 })
 
 test_that("check_row.names()", {
+  skip_if_no_unixodbc()
   con <- test_con("SQLITE")
 
   expect_snapshot(
@@ -117,6 +154,7 @@ test_that("check_row.names()", {
 })
 
 test_that("check_field.types()", {
+  skip_if_no_unixodbc()
   con <- test_con("SQLITE")
 
   expect_snapshot(
@@ -126,6 +164,7 @@ test_that("check_field.types()", {
 })
 
 test_that("check_attributes()", {
+  skip_if_no_unixodbc()
   expect_snapshot(
     error = TRUE,
     con <- test_con("SQLITE", attributes = list(boop = "bop"))
@@ -137,57 +176,69 @@ test_that("check_attributes()", {
   )
 })
 
-test_that("configure_spark() returns early on windows", {
+test_that("configure_simba() returns early on windows", {
   local_mocked_bindings(is_macos = function() {FALSE})
 
-  expect_equal(configure_spark(), NULL)
+  expect_equal(configure_simba(), NULL)
 })
 
-test_that("configure_spark() errors informatively on failure to install unixODBC", {
+test_that("configure_simba() errors informatively on failure to install unixODBC", {
   local_mocked_bindings(
     is_macos = function() {TRUE},
     locate_install_unixodbc = function() {character(0)}
   )
 
-  expect_snapshot(databricks(), error = TRUE)
+  expect_snapshot(configure_simba(), error = TRUE)
 })
 
-test_that("configure_spark() calls configure_unixodbc_spark() (#835)", {
+test_that("configure_simba() calls configure_unixodbc_simba() (#835)", {
   skip_if_not(is_macos())
   local_mocked_bindings(
     locate_install_unixodbc = function() "hey",
-    locate_config_spark = function() "there",
-    configure_unixodbc_spark = function(...) TRUE
+    configure_unixodbc_simba = function(...) TRUE
   )
 
-  expect_true(configure_spark())
+  expect_true(configure_simba(list(path = "example")))
 })
 
 test_that("locate_install_unixodbc() returns reasonable values", {
   skip_if(!is_macos())
   skip_if(!has_unixodbc(), "odbcinst not available.")
 
+  # odbc_config / pkg-config cflags point to nonexistent files on CRAN (#903)
+  skip_on_cran()
+
   res <- locate_install_unixodbc()
 
   expect_true(file.exists(res[1]))
-  expect_true(grepl("\\.dylib", res[1]))
+  expect_true(grepl("(\\.dylib|\\.a)$", res[1]))
 })
 
 test_that("databricks() errors informatively when spark ini isn't writeable", {
   local_mocked_bindings(is_writeable = function(path) {FALSE})
   expect_snapshot(
-    write_spark_lines("", ".", ".", call2("databricks")),
+    write_simba_lines("", ".", ".", call2("databricks")),
     error = TRUE
   )
 })
 
-test_that("locate_config_spark() returns reasonable values", {
-  simba_spark_ini <- "some/folder/simba.sparkodbc.ini"
-  withr::local_envvar(SIMBASPARKINI = simba_spark_ini)
-  expect_equal(locate_config_spark(), simba_spark_ini)
+test_that("driver_dir(...) returns reasonable values", {
+  path <- "/some/path/driver.so"
+  local_mocked_bindings(odbcListDrivers = function() {
+    data.frame(name = "OG Driver", attribute = "Driver",
+      value = path, drop = FALSE)
+  })
+  expect_equal(driver_dir("OG Driver"), "/some/path")
+  expect_equal(driver_dir(path), "/some/path")
 })
 
-test_that("configure_unixodbc_spark() writes reasonable entries", {
+test_that("spark_simba_config() returns reasonable values", {
+  simba_spark_ini <- "some/folder/simba.sparkodbc.ini"
+  withr::local_envvar(SIMBASPARKINI = simba_spark_ini)
+  expect_equal(spark_simba_config("")$path, simba_spark_ini)
+})
+
+test_that("configure_unixodbc_simba() writes reasonable entries", {
   unixodbc_install_path <- "libodbcinst.dylib"
   spark_config_path <- "simba.sparkodbc.ini"
 
@@ -199,9 +250,15 @@ test_that("configure_unixodbc_spark() writes reasonable entries", {
     con = spark_config_path
   )
 
-  configure_unixodbc_spark(
+  expect_snapshot(configure_unixodbc_simba(
     unixodbc_install = unixodbc_install_path,
-    spark_config = spark_config_path
+    simba_config = spark_config_path,
+    action = "warn"
+  ))
+  configure_unixodbc_simba(
+    unixodbc_install = unixodbc_install_path,
+    simba_config = spark_config_path,
+    action = "modify"
   )
 
   expect_equal(
@@ -214,7 +271,8 @@ test_that("configure_unixodbc_spark() writes reasonable entries", {
     )
   )
 
-  # both of the relevant fields are already there:
+  # both of the relevant fields are already there
+  # but point to incorrect values
   writeLines(
     c("some=entries",
       "not=relevant",
@@ -223,9 +281,48 @@ test_that("configure_unixodbc_spark() writes reasonable entries", {
     con = spark_config_path
   )
 
-  res <- configure_unixodbc_spark(
+  expect_snapshot(configure_unixodbc_simba(
     unixodbc_install = unixodbc_install_path,
-    spark_config = spark_config_path
+    simba_config = spark_config_path,
+    action = "warn"
+  ))
+  res <- configure_unixodbc_simba(
+    unixodbc_install = unixodbc_install_path,
+    simba_config = spark_config_path,
+    action = "modify"
+  )
+
+  expect_equal(res, NULL)
+  expect_equal(
+    readLines(spark_config_path),
+    c(
+      "some=entries",
+      "not=relevant",
+      "ODBCInstLib=libodbcinst.dylib",
+      "DriverManagerEncoding=UTF-16"
+    )
+  )
+
+  # One entry correct, other incorrect
+  # expect warning with single suggestion
+  # when action is "warn"
+  writeLines(
+    c("some=entries",
+      "not=relevant",
+      "ODBCInstLib=libodbcinst.dylib",
+      "DriverManagerEncoding=UTF-32"),
+    con = spark_config_path
+  )
+
+  expect_snapshot(configure_unixodbc_simba(
+    unixodbc_install = unixodbc_install_path,
+    simba_config = spark_config_path,
+    action = "warn"
+  ))
+  res <- configure_unixodbc_simba(
+    unixodbc_install = unixodbc_install_path,
+    simba_config = spark_config_path,
+    action = "modify"
   )
 
   expect_equal(res, NULL)
@@ -248,9 +345,15 @@ test_that("configure_unixodbc_spark() writes reasonable entries", {
     con = spark_config_path
   )
 
-  configure_unixodbc_spark(
+  expect_snapshot(configure_unixodbc_simba(
     unixodbc_install = unixodbc_install_path,
-    spark_config = spark_config_path
+    simba_config = spark_config_path,
+    action = "warn"
+  ))
+  configure_unixodbc_simba(
+    unixodbc_install = unixodbc_install_path,
+    simba_config = spark_config_path,
+    action = "modify"
   )
 
   expect_equal(
@@ -264,4 +367,19 @@ test_that("configure_unixodbc_spark() writes reasonable entries", {
       "DriverManagerEncoding=UTF-16"
     )
   )
+
+  # Finally, a good config
+  writeLines(
+    c("some=entries",
+      "not=relevant",
+      "ODBCInstLib=libodbcinst.dylib",
+      "DriverManagerEncoding=UTF-16"),
+    con = spark_config_path
+  )
+
+  expect_no_warning(configure_unixodbc_simba(
+    unixodbc_install = unixodbc_install_path,
+    simba_config = spark_config_path,
+    action = "warn"
+  ))
 })

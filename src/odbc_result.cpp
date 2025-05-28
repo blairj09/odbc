@@ -5,6 +5,12 @@
 #include <chrono>
 #include <memory>
 
+#ifndef SQL_SS_TIME2
+#define SQL_SS_TIME2 (-154)
+#endif
+#ifndef SQL_SS_TIMESTAMPOFFSET
+#define SQL_SS_TIMESTAMPOFFSET (-155)
+#endif
 namespace odbc {
 
 using odbc::utils::run_interruptible;
@@ -20,7 +26,8 @@ odbc_result::odbc_result(
       complete_(0),
       bound_(false),
       immediate_(immediate),
-      output_encoder_(Iconv(c_->encoding(), "UTF-8")) {
+      output_encoder_(c->output_encoder()),
+      column_name_encoder_(c->column_name_encoder()) {
 
   c_->cancel_current_result();
 
@@ -66,11 +73,11 @@ void odbc_result::execute() {
       // Executing in a thread away from main.  Signal
       // that we have encountered an error using an exception.
       // Main thread will raise the formatted [R] error.
-      throw odbc_error(e, sql_, output_encoder_);
+      throw odbc_error(e, sql_, *output_encoder_);
     } else {
       // Executing on the main thread.  Raise the
       // formatted [R] errpr ourselves.
-      raise_error(odbc_error(e, sql_, output_encoder_));
+      raise_error(odbc_error(e, sql_, *output_encoder_));
     }
   } catch (...) {
     c_->set_current_result(nullptr);
@@ -354,7 +361,7 @@ void odbc_result::bind_raw(
       column, raws_[column], reinterpret_cast<bool*>(nulls_[column].data()));
 }
 
-nanodbc::timestamp odbc_result::as_timestamp(double value) {
+nanodbc::timestamp odbc_result::as_timestamp(double value, unsigned long long factor, unsigned long long pad) {
   nanodbc::timestamp ts;
   auto frac = modf(value, &value);
 
@@ -362,9 +369,8 @@ nanodbc::timestamp odbc_result::as_timestamp(double value) {
   auto utc_time = system_clock::from_time_t(static_cast<std::time_t>(value));
 
   auto civil_time = cctz::convert(utc_time, c_->timezone());
-  // We are using a fixed precision of 3, as that is all we can be guaranteed
-  // to support in SQLServer
-  ts.fract = (std::int32_t)(frac * 1000) * 1000000;
+  ts.fract = (std::int32_t)(frac * factor) * pad;
+
   ts.sec = civil_time.second();
   ts.min = civil_time.minute();
   ts.hour = civil_time.hour();
@@ -407,12 +413,24 @@ void odbc_result::bind_datetime(
   auto d = REAL(data[column]);
 
   nanodbc::timestamp ts;
+  short precision = 3;
+  try {
+    precision = statement.parameter_scale(column);
+  } catch (const nanodbc::database_error& e) {
+    raise_warning("Unable to discern datetime precision. Using default (3).");
+  };
+  // Sanity scrub
+  precision = std::min<short>(precision, 7);
+  unsigned long long prec_adj = std::pow(10, precision);
+  // The fraction field is expressed in billionths of
+  // a second.
+  unsigned long long pad = std::pow(10, 9 - precision);
   for (size_t i = 0; i < size; ++i) {
     auto value = d[start + i];
     if (ISNA(value)) {
       nulls_[column][i] = true;
     } else {
-      ts = as_timestamp(value);
+      ts = as_timestamp(value, prec_adj, pad);
     }
     timestamps_[column].push_back(ts);
   }
@@ -480,14 +498,49 @@ std::vector<std::string> odbc_result::column_names(nanodbc::result const& r) {
   names.reserve(num_columns_);
   for (short i = 0; i < num_columns_; ++i) {
     nanodbc::string_type name = r.column_name(i);
-    // We expect column names to share the same encoding as the
-    // data itself.  Similar to the handling of string fields,
+    // Similar to the handling of string fields,
     // convert to UTF-8 before returning to user ( if needed )
     names.push_back(
-        output_encoder_.makeString(name.c_str(), name.c_str() + name.length())
+        column_name_encoder_->makeString(name.c_str(), name.c_str() + name.length())
     );
   }
   return names;
+}
+
+double odbc_result::as_double(nanodbc::timestampoffset const& tso) {
+  using namespace cctz;
+  if (tso.offset_hour == 0 && tso.offset_minute == 0) {
+    return as_double(tso.stamp);
+  }
+  const sys_seconds offset(tso.offset_hour * 3600 + tso.offset_minute * 60);
+
+  // Make sure we can load timezone
+  // Capture any error that we can raise
+  // to [R] more gracefully.
+  //
+  // Note, when the TZ file can't be located on the FS,
+  // `fixed_time_zone` will return false (and fallback to utc).
+  // As we want to throw this warning ONCE, and not on *every*
+  // failed row value, we test to see whether `cctz` has thrown
+  // an error.  There, an error is thrown only *once* for each
+  // (failed) time-zone.
+  std::stringstream stream;
+  std::streambuf* oldClogStreamBuf = std::clog.rdbuf(stream.rdbuf());
+  cctz::time_zone tz = fixed_time_zone(offset);
+  std::clog.rdbuf(oldClogStreamBuf);
+  if (stream.rdbuf()->in_avail()) {
+    std::stringstream msg;
+    msg << "Unable to locate TZ corresponding to offset of " << offset.count() << " seconds.\n";
+    msg << "Falling back to the `timezone` connection argument if specified, or `UTC` if not.";
+    raise_warning(msg.str());
+    return as_double(tso.stamp);
+  }
+
+  // sec is time_point
+  auto sec = convert(
+      civil_second(tso.stamp.year, tso.stamp.month, tso.stamp.day, tso.stamp.hour, tso.stamp.min, tso.stamp.sec),
+      tz);
+  return sec.time_since_epoch().count() + (tso.stamp.fract / 1000000000.0);
 }
 
 double odbc_result::as_double(nanodbc::timestamp const& ts) {
@@ -680,11 +733,13 @@ std::vector<r_type> odbc_result::column_types(nanodbc::result const& r) {
       break;
     // Time
     case SQL_TIME:
+    case SQL_SS_TIME2:
     case SQL_TYPE_TIME:
       types.push_back(odbc::time_t);
       break;
     case SQL_TIMESTAMP:
     case SQL_TYPE_TIMESTAMP:
+    case SQL_SS_TIMESTAMPOFFSET:
       types.push_back(datetime_t);
       break;
     case SQL_CHAR:
@@ -854,7 +909,7 @@ void odbc_result::assign_string(
     if (value.is_null(column)) {
       res = NA_STRING;
     } else {
-      res = output_encoder_.makeSEXP(str.c_str(), str.c_str() + str.length());
+      res = output_encoder_->makeSEXP(str.c_str(), str.c_str() + str.length());
     }
   }
   SET_STRING_ELT(out[column], row, res);
@@ -886,7 +941,7 @@ void odbc_result::assign_datetime(
   if (value.is_null(column)) {
     res = NA_REAL;
   } else {
-    auto ts = value.get<nanodbc::timestamp>(column);
+    auto ts = value.get<nanodbc::timestampoffset>(column);
     if (value.is_null(column)) {
       res = NA_REAL;
     } else {

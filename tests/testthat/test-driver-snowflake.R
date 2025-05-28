@@ -76,7 +76,7 @@ test_that("alternative authenticators are supported", {
   expect_equal(args$authenticator, "externalbrowser")
 })
 
-test_that("can pass only `uid` with `authenticator = 'externalbrowser'` (#817)", {
+test_that("can pass only `uid` with non-NULL `authenticator` (#817, #889)", {
   args <- snowflake_args(
     account = "testorg-test_account",
     driver = "driver",
@@ -85,6 +85,15 @@ test_that("can pass only `uid` with `authenticator = 'externalbrowser'` (#817)",
   )
   expect_equal(args$uid, "boop")
   expect_equal(args$authenticator, "externalbrowser")
+
+  args <- snowflake_args(
+    account = "testorg-test_account",
+    driver = "driver",
+    authenticator = "SNOWFLAKE_JWT",
+    uid = "boop"
+  )
+  expect_equal(args$uid, "boop")
+  expect_equal(args$authenticator, "SNOWFLAKE_JWT")
 })
 
 test_that("we error if we can't find ambient credentials", {
@@ -95,6 +104,28 @@ test_that("we error if we can't find ambient credentials", {
   expect_snapshot(
     snowflake_args(account = "testorg-test_account", driver = "driver"),
     error = TRUE
+  )
+})
+
+test_that("we hint viewer-based credentials on Connect", {
+  withr::local_envvar(SF_PARTNER = "")
+  local_mocked_bindings(
+    snowflake_auth_args = function(...) list(),
+    running_on_connect = function() TRUE
+  )
+  expect_snapshot(
+    snowflake_args(account = "testorg-test_account", driver = "driver"),
+    error = TRUE
+  )
+})
+
+test_that("tokens can be requested from a Connect server", {
+  skip_if_not_installed("connectcreds")
+
+  connectcreds::local_mocked_connect_responses(token = "token")
+  expect_equal(
+    snowflake_auth_args("testorg-test_account"),
+    list(authenticator = "oauth", token = "token")
   )
 })
 
