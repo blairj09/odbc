@@ -8,8 +8,8 @@
 <title>Developing odbc • odbc</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.4.2/css/all.min.css" rel="stylesheet">
-<link href="../deps/font-awesome-6.4.2/css/v4-shims.min.css" rel="stylesheet">
+<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Developing odbc">
 <meta name="robots" content="noindex">
 </head>
@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">odbc</a>
 
-    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">1.5.0.9000</small>
+    <small class="nav-text text-danger me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="In-development version">1.6.1.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -61,7 +61,7 @@
       <img src="../logo.png" class="logo" alt=""><h1>Developing odbc</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/r-dbi/odbc/blob/main/vignettes/develop.Rmd" class="external-link"><code>vignettes/develop.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/r-dbi/odbc/blob/master/vignettes/develop.Rmd" class="external-link"><code>vignettes/develop.Rmd</code></a></small>
       <div class="d-none name"><code>develop.Rmd</code></div>
     </div>
 
@@ -285,8 +285,9 @@ Once you’ve finished building the image, run it with:</p>
 <p>Note that the <code>run</code> command here is a bit different than
 the one in the linked blog post.</p>
 <p>Next, you’ll install the Basic, ODBC, and SQLPlus Instant Client
-libraries from the <a href="https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" class="external-link">Oracle
-website</a> by doing the following:</p>
+libraries from the Oracle website
+(<code>https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html</code>)
+by doing the following:</p>
 <ul>
 <li>Download the Basic, ODBC, and SQLPlus <code>.dmg</code>s.</li>
 <li>Create a folder for the instant client to live in. I made mine at
@@ -390,9 +391,10 @@ unixODBC, and <code>libaio1</code>. You can get the last with:</p>
 driver, the PRs <a href="https://github.com/r-dbi/odbc/commit/257f041a3aec8348000a89208da5ed0eb059fe81" class="external-link">implementing
 support for unit testing Oracle</a> and <a href="https://github.com/r-dbi/odbc/commit/4090f0a7916db7ab22e4088040aa2492751140dd" class="external-link">adding
 support for the Oracle Pro Driver</a> for odbc are a great guide here.
-The “Installation Instructions” at the bottom of <a href="https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" class="external-link">Oracle’s
-Instant Client docs</a> are thorough–you shouldn’t need them here, but a
-good backup.</p>
+The “Installation Instructions” at the bottom of Oracle’s Instant Client
+docs
+(<code>https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html</code>)
+are thorough–you shouldn’t need them here, but a good backup.</p>
 <p>I ultimately wasn’t able to make a connection with the driver that
 Oracle ships, but was able to do so with the Posit Pro Drivers.</p>
 <p>Run the lines in <code>.github/odbc/install-oracle-driver.sh</code>
@@ -414,7 +416,8 @@ following inside of it:</p>
 code from the linked PR</a> (see the repository secret for the driver
 URL or contact Simon Couch or Hadley Wickham if you don’t have access)
 or through RStudio Pro (if you have credentials, you can generate
-yourself a license key <a href="https://connect.posit.it/support/license_management/" class="external-link">here</a>).</p>
+yourself a license key here:
+<code>https://connect.posit.it/support/license_management/</code>).</p>
 <p>Add the following lines to your <code>.Renviron</code> (with
 <code>usethis::edit_r_environ()</code>). Adjust the value for
 <code>ODBCSYSINI</code> to the directory prefixing <code>.ini</code>
@@ -516,7 +519,7 @@ specifying the odbc manager explicitly:</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.1.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>
