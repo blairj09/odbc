@@ -70,6 +70,7 @@ Collate:
     'driver-hana.R'
     'driver-hive.R'
     'driver-impala.R'
+    'driver-lakebase.R'
     'driver-mysql.R'
     'driver-netezza.R'
     'driver-oracle.R'
