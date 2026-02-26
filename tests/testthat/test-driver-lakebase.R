@@ -159,7 +159,7 @@ test_that("default args include required PostgreSQL connection params", {
   expect_equal(args$driver, "PostgreSQL")
   expect_equal(args$server, "host")
   expect_equal(args$database, "database")
-  expect_equal(args$port, 443)
+  expect_equal(args$port, 5432)
   expect_equal(args$sslmode, "require")
 })
 

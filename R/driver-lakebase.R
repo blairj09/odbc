@@ -142,7 +142,7 @@ lakebase_default_args <- function(driver, host, database) {
     driver = driver %||% lakebase_default_driver(),
     server = host,
     database = database,
-    port = 443,
+    port = 5432,
     sslmode = "require"
   )
 }
