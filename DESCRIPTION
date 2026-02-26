@@ -34,6 +34,7 @@ Suggests:
     covr,
     DBItest,
     httr2,
+    jsonlite,
     knitr,
     magrittr,
     paws.common,

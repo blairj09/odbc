@@ -16,6 +16,15 @@
       ! Failed to automatically find the PostgreSQL ODBC driver.
       i Set `driver` to known driver name or path.
 
+# must supply both uid and pwd
+
+    Code
+      lakebase_auth_args("workspace", "instance-id", uid = "uid")
+    Condition
+      Error in `DBI::dbConnect()`:
+      ! Both `uid` and `pwd` must be specified for manual authentication.
+      i Or leave both unset for automated authentication.
+
 # errors if auth fails
 
     Code
@@ -25,19 +34,11 @@
       ! Failed to detect ambient Databricks credentials.
       i Supply `uid` and `pwd` to authenticate manually.
 
-# must supply both uid and pwd
-
-    Code
-      lakebase_auth_args("workspace", uid = "uid")
-    Condition
-      Error in `DBI::dbConnect()`:
-      ! Both `uid` and `pwd` must be specified for manual authentication.
-      i Or leave both unset for automated authentication.
-
 # we hint viewer-based credentials on Connect
 
     Code
-      lakebase_args(instance_id = "instance-id", workspace = "workspace", driver = "driver")
+      lakebase_args(instance_id = "instance-id", database = "database", workspace = "workspace",
+        driver = "driver")
     Condition
       Error in `DBI::dbConnect()`:
       ! Failed to detect ambient Databricks credentials.
